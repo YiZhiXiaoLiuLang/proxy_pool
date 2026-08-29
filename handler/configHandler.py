@@ -8,6 +8,7 @@
 -------------------------------------------------
    Change Activity:
                    2020/6/22:
+                   2026/08/29: 新增 checkUrl / checkKeyword 配置项
 -------------------------------------------------
 """
 __author__ = 'JHao'
@@ -56,6 +57,14 @@ class ConfigHandler(withMetaclass(Singleton)):
     @LazyProperty
     def verifyTimeout(self):
         return int(os.getenv("VERIFY_TIMEOUT", setting.VERIFY_TIMEOUT))
+
+    @LazyProperty
+    def checkUrl(self):
+        return os.getenv("CHECK_URL", setting.CHECK_URL)
+
+    @LazyProperty
+    def checkKeyword(self):
+        return os.getenv("CHECK_KEYWORD", setting.CHECK_KEYWORD)
 
     # @LazyProperty
     # def proxyCheckCount(self):

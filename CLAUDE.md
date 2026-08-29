@@ -56,7 +56,7 @@ tests/
 - **爬取器** (`fetcher/`)：插件架构。`baseFetcher.py` 定义 `BaseFetcher` 基类（提供 `parseProxiesFromText`/`yieldUniqueProxies` 共享方法，约定 `name`/`url`/`enabled` 属性和 `fetch()` 方法）。每个代理源在 `sources/` 目录下独立文件，继承 `BaseFetcher`。调度器自动扫描目录加载 `enabled=True` 的源。`setting.py` 的 `PROXY_FETCHER_EXCLUDE` 黑名单可临时禁用指定源。
 - **数据库层** (`db/`)：抽象 `dbClient` 接口，包含 Redis (`redisClient.py`) 和 SSDB (`ssdbClient.py`) 两种实现。通过 `setting.py` 中的 `DB_CONN` 配置连接（格式：`redis://:pwd@ip:port/db` 或 `ssdb://:pwd@ip:port`）。
 - **调度器** (`helper/scheduler.py`)：基于 APScheduler 的定时任务，驱动爬取器运行并触发验证。时区通过 `setting.py` 中的 `TIMEZONE` 配置。
-- **验证器** (`helper/validator.py`)：使用 `HTTP_URL` (http://httpbin.org) 和 `HTTPS_URL` (https://www.qq.com) 测试代理，超时时间由 `VERIFY_TIMEOUT` 指定（默认 10 秒）。超过 `MAX_FAIL_COUNT` 的代理会被移除。当代理池数量低于 `POOL_SIZE_MIN`（默认 20）时触发重新爬取。
+- **验证器** (`helper/validator.py`)：使用 `HTTP_URL` (http://httpbin.org) 和 `HTTPS_URL` (https://www.qq.com) 测试代理，超时时间由 `VERIFY_TIMEOUT` 指定（默认 10 秒）。`contentValidator` 会通过代理 GET `CHECK_URL`（http://baidu.com，不跟随重定向），响应体必须包含 `CHECK_KEYWORD` 特征（baidu 301 页面锚点），否则判定为伪造代理。超过 `MAX_FAIL_COUNT` 的代理会被移除。当代理池数量低于 `POOL_SIZE_MIN`（默认 20）时触发重新爬取。
 - **API** (`api/proxyApi.py`)：Flask 接口，包含以下端点：
   - `/get`：随机获取一个代理（`?type=https` 可筛选 HTTPS 代理）
   - `/pop`：获取并删除一个代理
@@ -76,6 +76,7 @@ tests/
 - `DB_CONN`：数据库连接字符串
 - `PROXY_FETCHER_EXCLUDE`：爬取器黑名单（自动扫描 `enabled=True` 的源，排除黑名单中的）
 - `HTTP_URL`/`HTTPS_URL`：验证目标 URL
+- `CHECK_URL`/`CHECK_KEYWORD`：伪造代理检测（GET `CHECK_URL` 的响应必须包含 `CHECK_KEYWORD`，否则视为假代理）
 - `VERIFY_TIMEOUT`：验证超时时间（默认 10 秒）
 - `MAX_FAIL_COUNT`：代理被移除前允许的最大失败次数
 - `POOL_SIZE_MIN`：触发重新爬取的最小代理池数量阈值

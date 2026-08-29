@@ -8,6 +8,7 @@
 -------------------------------------------------
    Change Activity:
                    2019/2/15:
+                   2026/08/29: 新增伪造代理检测配置 CHECK_URL / CHECK_KEYWORD
 -------------------------------------------------
 """
 
@@ -56,6 +57,12 @@ HTTPS_URL = "https://www.qq.com"
 
 # 代理验证时超时时间
 VERIFY_TIMEOUT = 10
+
+# 伪造代理检测: 通过代理 GET 此地址(不跟随重定向), 响应不包含 CHECK_KEYWORD 则判定为假代理
+CHECK_URL = "http://baidu.com"
+
+# 伪造代理检测的特征字符串, 即 http://baidu.com 正常返回的 301 页面 body
+CHECK_KEYWORD = '<a href="https://www.baidu.com/">Moved Permanently</a>'
 
 # 近PROXY_CHECK_COUNT次校验中允许的最大失败次数,超过则剔除代理
 MAX_FAIL_COUNT = 0

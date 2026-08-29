@@ -8,12 +8,14 @@
 -------------------------------------------------
    Change Activity:
                    2023/03/10: 支持带用户认证的代理格式 username:password@ip:port
+                   2026/08/29: 新增 contentValidator 伪造代理内容检测
+                   2026/08/29: 注释停用 httpTimeOutValidator（连通性由 contentValidator 覆盖）
 -------------------------------------------------
 """
 __author__ = 'JHao'
 
 import re
-from requests import head
+from requests import head, get
 from util.six import withMetaclass
 from util.singleton import Singleton
 from handler.configHandler import ConfigHandler
@@ -55,7 +57,10 @@ def formatValidator(proxy):
     return True if IP_REGEX.fullmatch(proxy) else False
 
 
-@ProxyValidator.addHttpValidator
+# 连通性检测停用: contentValidator 能拿到 baidu 真实 301 响应体即证明代理可用,
+# 无需再单独请求 httpbin.org（其不稳定, 故障时会把可用代理全部误杀）。
+# 如需恢复检测, 取消下面装饰器的注释即可
+# @ProxyValidator.addHttpValidator
 def httpTimeOutValidator(proxy):
     """ http检测超时 """
 
@@ -84,3 +89,19 @@ def httpsTimeOutValidator(proxy):
 def customValidatorExample(proxy):
     """自定义validator函数，校验代理是否可用, 返回True/False"""
     return True
+
+
+@ProxyValidator.addHttpValidator
+def contentValidator(proxy):
+    """伪造代理检测: 部分假代理对任何请求都返回200, 仅靠状态码无法识别。
+    通过代理 GET CHECK_URL (http://baidu.com, 不跟随重定向), 真实代理会拿到
+    baidu 的 301 页面, 其 body 携带 CHECK_KEYWORD 特征; 响应不含该特征即为假代理"""
+    proxies = {"http": "http://{proxy}".format(proxy=proxy), "https": "https://{proxy}".format(proxy=proxy)}
+
+    try:
+        # 不跟随重定向: http://baidu.com 的 301 响应 body 才携带特征关键字, 跟随后的首页没有
+        r = get(conf.checkUrl, headers=HEADER, proxies=proxies,
+                timeout=conf.verifyTimeout, allow_redirects=False)
+        return True if conf.checkKeyword in r.text else False
+    except Exception as e:
+        return False

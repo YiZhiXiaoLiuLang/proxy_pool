@@ -83,6 +83,18 @@ PROXY_FETCHER_EXCLUDE = [
 
 - 默认值：`"https://www.qq.com"`
 
+### `CHECK_URL`
+
+伪造代理检测的请求地址。部分假代理对任何请求都返回 200，仅靠状态码无法识别。校验时通过代理 GET 该地址（不跟随重定向），若响应内容不包含 `CHECK_KEYWORD`，则判定为假代理。
+
+- 默认值：`"http://baidu.com"`
+
+### `CHECK_KEYWORD`
+
+伪造代理检测的特征字符串，即 `http://baidu.com` 正常返回的 301 页面 body 中的锚点。劫持型假代理返回的是自己的 200 页面，不包含该特征。
+
+- 默认值：`'<a href="https://www.baidu.com/">Moved Permanently</a>'`
+
 ### `VERIFY_TIMEOUT`
 
 检验代理的超时时间，单位秒。使用代理访问 `HTTP_URL` / `HTTPS_URL` 耗时超过 `VERIFY_TIMEOUT` 时，视为代理不可用。

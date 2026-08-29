@@ -8,6 +8,7 @@
 -------------------------------------------------
    Change Activity:
                    2026/05/28:
+                   2026/08/29: 新增 contentValidator 伪造代理检测测试
 -------------------------------------------------
 """
 __author__ = 'JHao'
@@ -17,7 +18,8 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 # 直接导入 IP_REGEX 和 formatValidator，不导入整个 validator 模块（避免模块级副作用）
-from helper.validator import IP_REGEX, formatValidator, httpTimeOutValidator, httpsTimeOutValidator, customValidatorExample
+from helper.validator import (IP_REGEX, formatValidator, httpTimeOutValidator,
+                              httpsTimeOutValidator, contentValidator, customValidatorExample)
 
 
 class TestIPRegex:
@@ -122,3 +124,44 @@ class TestCustomValidatorExample:
     def test_always_returns_true(self):
         """customValidatorExample 始终返回 True"""
         assert customValidatorExample("1.2.3.4:8080") is True
+
+
+BAIDU_301_BODY = ('<html><head><title>301 Moved Permanently</title></head>'
+                  '<body bgcolor="#FFFFFF">'
+                  '<a href="https://www.baidu.com/">Moved Permanently</a>.'
+                  '</body></html>')
+
+
+class TestContentValidator:
+    """contentValidator 伪造代理内容检测测试"""
+
+    @patch("helper.validator.get")
+    def test_returns_true_on_keyword_hit(self, mock_get):
+        """响应 body 包含特征关键字 -> True"""
+        mock_get.return_value = MagicMock(status_code=301, text=BAIDU_301_BODY)
+        assert contentValidator("1.2.3.4:8080") is True
+
+    @patch("helper.validator.get")
+    def test_returns_false_on_200_without_keyword(self, mock_get):
+        """响应 200 但 body 不含特征关键字(伪造响应) -> False"""
+        mock_get.return_value = MagicMock(status_code=200, text="<html>Welcome</html>")
+        assert contentValidator("1.2.3.4:8080") is False
+
+    @patch("helper.validator.get")
+    def test_returns_false_on_empty_body(self, mock_get):
+        """空 body -> False"""
+        mock_get.return_value = MagicMock(status_code=301, text="")
+        assert contentValidator("1.2.3.4:8080") is False
+
+    @patch("helper.validator.get")
+    def test_no_redirect_followed(self, mock_get):
+        """必须不跟随重定向(301 的 body 才带特征, 跟随后没有)"""
+        mock_get.return_value = MagicMock(status_code=301, text=BAIDU_301_BODY)
+        contentValidator("1.2.3.4:8080")
+        assert mock_get.call_args[1]["allow_redirects"] is False
+
+    @patch("helper.validator.get")
+    def test_returns_false_on_exception(self, mock_get):
+        """get() raise Timeout -> False"""
+        mock_get.side_effect = TimeoutError("connection timed out")
+        assert contentValidator("1.2.3.4:8080") is False
