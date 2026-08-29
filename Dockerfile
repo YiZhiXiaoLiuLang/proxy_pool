@@ -6,8 +6,8 @@ WORKDIR /app
 
 COPY ./requirements.txt .
 
-# timezone and init process
-RUN apk add -U tzdata tini && \
+# timezone, init process and shell (alpine 只有 busybox sh, proxy_pool.sh 需要 bash)
+RUN apk add -U tzdata tini bash && \
     cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
     apk del tzdata
 
