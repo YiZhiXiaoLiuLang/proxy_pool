@@ -12,6 +12,7 @@
                    2019/08/14: 集成Gunicorn启动方式
                    2020/06/23: 新增pop接口
                    2022/07/21: 更新count接口
+                   2026/08/30: 新增/count/source按来源统计接口
 -------------------------------------------------
 """
 __author__ = 'JHao'
@@ -46,7 +47,8 @@ api_list = [
     {"url": "/pop", "params": "", "desc": "get and delete a proxy"},
     {"url": "/delete", "params": "proxy: 'e.g. 127.0.0.1:8080'", "desc": "delete an unable proxy"},
     {"url": "/all", "params": "type: ''https'|''", "desc": "get all proxy from proxy pool"},
-    {"url": "/count", "params": "", "desc": "return proxy count"}
+    {"url": "/count", "params": "", "desc": "return proxy count"},
+    {"url": "/count/source", "params": "", "desc": "return proxy count by fetcher source"}
     # 'refresh': 'refresh proxy pool',
 ]
 
@@ -101,6 +103,17 @@ def getCount():
         for source in proxy.source.split('/'):
             source_dict[source] = source_dict.get(source, 0) + 1
     return {"http_type": http_type_dict, "source": source_dict, "count": len(proxies)}
+
+
+@app.route('/count/source/')
+def countSource():
+    """ 按代理来源(采集fetcher)统计池中可用代理, 多来源代理在各来源下分别计数 """
+    proxies = proxy_handler.getAll()
+    source_dict = {}
+    for proxy in proxies:
+        for source in proxy.source.split('/'):
+            source_dict[source] = source_dict.get(source, 0) + 1
+    return {"source": source_dict, "count": len(proxies)}
 
 
 def runFlask():

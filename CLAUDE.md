@@ -61,7 +61,8 @@ tests/
   - `/get`：随机获取一个代理（`?type=https` 可筛选 HTTPS 代理）
   - `/pop`：获取并删除一个代理
   - `/all`：列出所有代理
-  - `/count`：代理数量统计
+  - `/count`：代理数量统计（含 http/https 分布与来源分布）
+  - `/count/source`：按来源（采集 fetcher）统计池中可用代理数量
   - `/delete`：通过 `?proxy=host:port` 删除指定代理
   - 服务运行在 `HOST:PORT`（默认 `0.0.0.0:5010`），配置来自 `setting.py`。
 - **命令行入口** (`proxyPool.py`)：基于 click 的命令行工具，包含 `schedule` 和 `server` 两个子命令。

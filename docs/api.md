@@ -11,6 +11,7 @@
 | `/pop` | GET | 返回并删除一个代理 | 可选：`?type=https` 过滤 HTTPS 代理 |
 | `/all` | GET | 返回所有代理 | 可选：`?type=https` 过滤 HTTPS 代理 |
 | `/count` | GET | 返回代理数量统计 | 无 |
+| `/count/source` | GET | 按来源(采集 fetcher)统计可用代理数量 | 无 |
 | `/delete` | GET | 删除指定代理 | `?proxy=host:port` |
 
 ## 调用示例
@@ -67,6 +68,10 @@ proxy = requests.get("http://127.0.0.1:5010/get/?type=https").json()
 # 返回代理数量、类型分布、来源分布
 stats = requests.get("http://127.0.0.1:5010/count/").json()
 # 示例返回: {"http_type": {"http": 10, "https": 5}, "source": {"freeProxy01": 8, "freeProxy02": 7}, "count": 15}
+
+# 只看各采集来源贡献了多少可用代理
+source_stats = requests.get("http://127.0.0.1:5010/count/source/").json()
+# 示例返回: {"source": {"freeProxy01": 8, "freeProxy02": 7}, "count": 15}
 ```
 
 ## 直接读取数据库

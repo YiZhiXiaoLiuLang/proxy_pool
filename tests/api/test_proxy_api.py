@@ -8,6 +8,7 @@
 -------------------------------------------------
    Change Activity:
                    2026/05/28:
+                   2026/08/30: 新增 /count/source 来源统计接口测试
 -------------------------------------------------
 """
 __author__ = 'JHao'
@@ -154,6 +155,32 @@ class TestCount:
         assert data["count"] == 0
         assert data["http_type"] == {}
         assert data["source"] == {}
+
+
+class TestCountSource:
+
+    def test_count_source(self, client, mocks):
+        proxies = [
+            Proxy("1.2.3.4:8080", source="ip89"),
+            Proxy("5.6.7.8:443", source="ip89/kuaidaili", https=True),
+            Proxy("6.6.6.6:80", source="kuaidaili"),
+        ]
+        mocks["getAll"].return_value = proxies
+
+        resp = client.get("/count/source/")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        # 多来源代理在各来源下分别计数
+        assert data["source"] == {"ip89": 2, "kuaidaili": 2}
+        assert data["count"] == 3
+
+    def test_count_source_empty(self, client, mocks):
+        mocks["getAll"].return_value = []
+
+        resp = client.get("/count/source/")
+        data = resp.get_json()
+        assert data["source"] == {}
+        assert data["count"] == 0
 
 
 class TestRefresh:
