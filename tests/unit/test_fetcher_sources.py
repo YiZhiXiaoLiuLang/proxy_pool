@@ -125,10 +125,14 @@ class TestIp89Fetcher(object):
     @patch("fetcher.sources.ip89.WebRequest")
     def test_fetch(self, mock_wr):
         from fetcher.sources.ip89 import Ip89Fetcher
-        html = '<td>1.2.3.4</td><td>8080</td>'
-        mock_wr.return_value.get.return_value = _make_response(text=html)
+        # api.89ip.cn 批量接口: 广告 HTML 混纯文本 ip:port 列表
+        text = '<a href="https://www.qiyunip.com/" target="_blank">ad</a><br>' \
+               '1.2.3.4:8080\n5.6.7.8:3128\n1.2.3.4:8080'
+        mock_wr.return_value.get.return_value = _make_response(text=text)
         result = list(Ip89Fetcher().fetch())
         assert "1.2.3.4:8080" in result
+        assert "5.6.7.8:3128" in result
+        assert result.count("1.2.3.4:8080") == 1  # yieldUniqueProxies 去重
 
 
 class TestDocipFetcher(object):
