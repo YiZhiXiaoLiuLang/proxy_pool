@@ -10,6 +10,7 @@
                    2019/08/06: 执行代理校验
                    2021/05/25: 分别校验http和https
                    2022/08/16: 获取代理Region信息
+                   2026/09/05: 失败代理拉黑(伪造120分钟/网络失败60分钟), 池内连续失败满5分钟才作废
 -------------------------------------------------
 """
 __author__ = 'JHao'
@@ -22,6 +23,7 @@ from handler.logHandler import LogHandler
 from helper.validator import ProxyValidator
 from handler.proxyHandler import ProxyHandler
 from handler.configHandler import ConfigHandler
+from helper.blacklist import fail_blacklist, FAIL_EXPIRE_TIME
 
 
 class DoValidator(object):
@@ -40,12 +42,12 @@ class DoValidator(object):
             Proxy Object
         """
         http_r = cls.httpValidator(proxy)
-        https_r = False if not http_r else cls.httpsValidator(proxy)
+        https_r = False if http_r is not True else cls.httpsValidator(proxy)
 
         proxy.check_count += 1
         proxy.last_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        proxy.last_status = True if http_r else False
-        if http_r:
+        proxy.last_status = http_r is True
+        if http_r is True:
             if proxy.fail_count > 0:
                 proxy.fail_count -= 1
             proxy.https = True if https_r else False
@@ -53,12 +55,17 @@ class DoValidator(object):
                 proxy.region = cls.regionGetter(proxy) if cls.conf.proxyRegion else ""
         else:
             proxy.fail_count += 1
+        # 伪造标记(瞬态属性, 不入库): 响应可达但内容不符, 供黑名单区分拉黑时长
+        proxy.fake_flag = (http_r == "FAKE")
         return proxy
 
     @classmethod
     def httpValidator(cls, proxy):
         for func in ProxyValidator.http_validator:
-            if not func(proxy.proxy):
+            result = func(proxy.proxy)
+            if result == "FAKE":
+                return "FAKE"
+            if not result:
                 return False
         return True
 
@@ -120,17 +127,27 @@ class _ThreadChecker(Thread):
                 self.log.info('RawProxyCheck - {}: {} pass'.format(self.name, proxy.proxy.ljust(23)))
                 self.proxy_handler.put(proxy)
         else:
+            # 失败拉黑, 拉黑期内采集直接跳过: 伪造120分钟, 其他失败60分钟
+            fail_blacklist.add(proxy.proxy, fake=getattr(proxy, "fake_flag", False))
             self.log.info('RawProxyCheck - {}: {} fail'.format(self.name, proxy.proxy.ljust(23)))
 
     def __ifUse(self, proxy):
         if proxy.last_status:
+            fail_blacklist.clearFail(proxy.proxy)
             self.log.info('UseProxyCheck - {}: {} pass'.format(self.name, proxy.proxy.ljust(23)))
             self.proxy_handler.put(proxy)
         else:
-            if proxy.fail_count > self.conf.maxFailCount:
-                self.log.info('UseProxyCheck - {}: {} fail, count {} delete'.format(self.name,
-                                                                                    proxy.proxy.ljust(23),
-                                                                                    proxy.fail_count))
+            if getattr(proxy, "fake_flag", False):
+                # 伪造代理一次即拉黑120分钟, 并直接移出代理池
+                fail_blacklist.add(proxy.proxy, fake=True)
+                self.log.info('UseProxyCheck - {}: {} fake, delete blacklist120'.format(self.name,
+                                                                                       proxy.proxy.ljust(23)))
+                self.proxy_handler.delete(proxy)
+            elif fail_blacklist.markFail(proxy.proxy) >= FAIL_EXPIRE_TIME:
+                # 网络型失败要连续满5分钟才作废, 避免网络波动一次误杀
+                fail_blacklist.add(proxy.proxy)
+                self.log.info('UseProxyCheck - {}: {} fail连续满5分钟, delete blacklist60'.format(self.name,
+                                                                                                 proxy.proxy.ljust(23)))
                 self.proxy_handler.delete(proxy)
             else:
                 self.log.info('UseProxyCheck - {}: {} fail, count {} keep'.format(self.name,

@@ -8,6 +8,7 @@
 -------------------------------------------------
      Change Activity:
                      2026/06/15:
+                     2026/09/05: 黑名单机制测试(伪造即拉黑, 网络型失败连续满5分钟才作废)
 -------------------------------------------------
 """
 __author__ = 'JHao'
@@ -18,6 +19,7 @@ from datetime import datetime
 
 from helper.proxy import Proxy
 from helper.check import DoValidator, _ThreadChecker
+from helper.blacklist import FAIL_EXPIRE_TIME
 
 
 class TestDoValidator:
@@ -48,6 +50,27 @@ class TestDoValidator:
         assert result.last_status is True
         assert result.check_count == 1
         assert result.fail_count == 0
+
+    @patch("helper.check.ConfigHandler")
+    @patch("helper.check.ProxyValidator")
+    def test_validator_http_fake(self, mock_pv_cls, mock_conf_cls):
+        """HTTP 校验返回 "FAKE"(内容不符) -> last_status=False, fail_count+1, fake_flag=True"""
+        mock_pv_cls.http_validator = [MagicMock(return_value="FAKE")]
+
+        mock_conf = MagicMock()
+        mock_conf.proxyRegion = False
+
+        proxy = Proxy("1.2.3.4:8080", source="test")
+        proxy.fail_count = 0
+
+        with patch.object(DoValidator, "conf", mock_conf):
+            result = DoValidator.validator(proxy, "use")
+
+        assert result.last_status is False
+        assert result.fail_count == 1
+        assert result.fake_flag is True
+        # 伪造不算通过, 不应触发 https 检测后的 https=True
+        assert result.https is False
 
     @patch("helper.check.ConfigHandler")
     @patch("helper.check.ProxyValidator")
@@ -220,57 +243,92 @@ class TestThreadCheckerIfRaw:
         mock_ph.put.assert_not_called()
 
     def test_ifraw_failed_proxy_not_put(self):
-        """last_status=False -> 不 put"""
+        """last_status=False -> 不 put, 且按网络型失败拉黑"""
         mock_ph = MagicMock()
 
         proxy = Proxy("1.2.3.4:8080", source="test")
         proxy.last_status = False
 
         checker = _make_checker("raw", mock_ph)
-        checker._ThreadChecker__ifRaw(proxy)
+        with patch("helper.check.fail_blacklist") as mock_bl:
+            checker._ThreadChecker__ifRaw(proxy)
         mock_ph.put.assert_not_called()
+        mock_bl.add.assert_called_once_with("1.2.3.4:8080", fake=False)
+
+    def test_ifraw_failed_fake_blacklist_120(self):
+        """伪造代理失败 -> add(fake=True) 拉黑120分钟"""
+        mock_ph = MagicMock()
+
+        proxy = Proxy("1.2.3.4:8080", source="test")
+        proxy.last_status = False
+        proxy.fake_flag = True
+
+        checker = _make_checker("raw", mock_ph)
+        with patch("helper.check.fail_blacklist") as mock_bl:
+            checker._ThreadChecker__ifRaw(proxy)
+        mock_ph.put.assert_not_called()
+        mock_bl.add.assert_called_once_with("1.2.3.4:8080", fake=True)
 
 
 class TestThreadCheckerIfUse:
     """_ThreadChecker.__ifUse 测试"""
 
     def test_ifuse_pass_gets_put(self):
-        """last_status=True -> put"""
+        """last_status=True -> put, 并清零连续失败计时"""
         mock_ph = MagicMock()
 
         proxy = Proxy("1.2.3.4:8080", source="test")
         proxy.last_status = True
 
         checker = _make_checker("use", mock_ph)
-        checker._ThreadChecker__ifUse(proxy)
+        with patch("helper.check.fail_blacklist") as mock_bl:
+            checker._ThreadChecker__ifUse(proxy)
+        mock_bl.clearFail.assert_called_once_with("1.2.3.4:8080")
         mock_ph.put.assert_called_once_with(proxy)
 
-    def test_ifuse_fail_exceeds_max_deleted(self):
-        """fail_count > maxFailCount -> delete"""
+    def test_ifuse_fake_deleted_blacklist_120(self):
+        """伪造代理: 一次即 delete 并拉黑120分钟"""
         mock_ph = MagicMock()
-        mock_conf = MagicMock()
-        mock_conf.maxFailCount = 3
 
         proxy = Proxy("1.2.3.4:8080", source="test")
         proxy.last_status = False
-        proxy.fail_count = 5
+        proxy.fake_flag = True
 
-        checker = _make_checker("use", mock_ph, mock_conf)
-        checker._ThreadChecker__ifUse(proxy)
+        checker = _make_checker("use", mock_ph)
+        with patch("helper.check.fail_blacklist") as mock_bl:
+            checker._ThreadChecker__ifUse(proxy)
+        mock_bl.add.assert_called_once_with("1.2.3.4:8080", fake=True)
         mock_ph.delete.assert_called_once_with(proxy)
         mock_ph.put.assert_not_called()
 
-    def test_ifuse_fail_below_max_kept(self):
-        """fail_count <= maxFailCount -> put"""
+    def test_ifuse_fail_over_5min_deleted(self):
+        """网络型失败连续满5分钟 -> delete 并拉黑60分钟"""
         mock_ph = MagicMock()
-        mock_conf = MagicMock()
-        mock_conf.maxFailCount = 3
 
         proxy = Proxy("1.2.3.4:8080", source="test")
         proxy.last_status = False
-        proxy.fail_count = 2
+        proxy.fake_flag = False
 
-        checker = _make_checker("use", mock_ph, mock_conf)
-        checker._ThreadChecker__ifUse(proxy)
+        checker = _make_checker("use", mock_ph)
+        with patch("helper.check.fail_blacklist") as mock_bl:
+            mock_bl.markFail.return_value = FAIL_EXPIRE_TIME + 1
+            checker._ThreadChecker__ifUse(proxy)
+        mock_bl.add.assert_called_once_with("1.2.3.4:8080")
+        mock_ph.delete.assert_called_once_with(proxy)
+        mock_ph.put.assert_not_called()
+
+    def test_ifuse_fail_below_5min_kept(self):
+        """网络型失败未满5分钟 -> keep(不计入连续时长即保留)"""
+        mock_ph = MagicMock()
+
+        proxy = Proxy("1.2.3.4:8080", source="test")
+        proxy.last_status = False
+        proxy.fake_flag = False
+
+        checker = _make_checker("use", mock_ph)
+        with patch("helper.check.fail_blacklist") as mock_bl:
+            mock_bl.markFail.return_value = FAIL_EXPIRE_TIME - 60
+            checker._ThreadChecker__ifUse(proxy)
+        mock_bl.add.assert_not_called()
         mock_ph.put.assert_called_once_with(proxy)
         mock_ph.delete.assert_not_called()

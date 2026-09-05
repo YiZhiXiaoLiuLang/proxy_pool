@@ -10,6 +10,7 @@
                    2023/03/10: 支持带用户认证的代理格式 username:password@ip:port
                    2026/08/29: 新增 contentValidator 伪造代理内容检测
                    2026/08/29: 注释停用 httpTimeOutValidator（连通性由 contentValidator 覆盖）
+                   2026/09/05: contentValidator 区分伪造(返回"FAKE")与网络失败(返回False)
 -------------------------------------------------
 """
 __author__ = 'JHao'
@@ -102,6 +103,7 @@ def contentValidator(proxy):
         # 不跟随重定向: http://baidu.com 的 301 响应 body 才携带特征关键字, 跟随后的首页没有
         r = get(conf.checkUrl, headers=HEADER, proxies=proxies,
                 timeout=conf.verifyTimeout, allow_redirects=False)
-        return True if conf.checkKeyword in r.text else False
+        # 能拿到响应但内容不符 => 伪造/劫持代理, 与超时等网络型失败区分开
+        return "FAKE" if conf.checkKeyword not in r.text else True
     except Exception as e:
         return False

@@ -9,6 +9,7 @@
    Change Activity:
                    2026/05/28:
                    2026/08/29: 新增 contentValidator 伪造代理检测测试
+                   2026/09/05: contentValidator 区分伪造("FAKE")与网络失败(False)
 -------------------------------------------------
 """
 __author__ = 'JHao'
@@ -142,16 +143,16 @@ class TestContentValidator:
         assert contentValidator("1.2.3.4:8080") is True
 
     @patch("helper.validator.get")
-    def test_returns_false_on_200_without_keyword(self, mock_get):
-        """响应 200 但 body 不含特征关键字(伪造响应) -> False"""
+    def test_returns_fake_on_200_without_keyword(self, mock_get):
+        """响应可达但 body 不含特征关键字(伪造响应) -> "FAKE" """
         mock_get.return_value = MagicMock(status_code=200, text="<html>Welcome</html>")
-        assert contentValidator("1.2.3.4:8080") is False
+        assert contentValidator("1.2.3.4:8080") == "FAKE"
 
     @patch("helper.validator.get")
-    def test_returns_false_on_empty_body(self, mock_get):
-        """空 body -> False"""
+    def test_returns_fake_on_empty_body(self, mock_get):
+        """可达但空 body -> "FAKE" """
         mock_get.return_value = MagicMock(status_code=301, text="")
-        assert contentValidator("1.2.3.4:8080") is False
+        assert contentValidator("1.2.3.4:8080") == "FAKE"
 
     @patch("helper.validator.get")
     def test_no_redirect_followed(self, mock_get):

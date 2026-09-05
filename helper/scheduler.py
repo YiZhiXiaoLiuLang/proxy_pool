@@ -9,6 +9,7 @@
    Change Activity:
                    2019/08/05: proxyScheduler
                    2021/02/23: runProxyCheck时,剩余代理少于POOL_SIZE_MIN时执行抓取
+                   2026/09/05: 采集跳过拉黑期内代理, 避免重复验活积压队列
 -------------------------------------------------
 """
 __author__ = 'JHao'
@@ -22,6 +23,7 @@ from helper.check import Checker
 from handler.logHandler import LogHandler
 from handler.proxyHandler import ProxyHandler
 from handler.configHandler import ConfigHandler
+from helper.blacklist import fail_blacklist
 
 
 def __runProxyFetch():
@@ -29,6 +31,9 @@ def __runProxyFetch():
     proxy_fetcher = Fetcher()
 
     for proxy in proxy_fetcher.run():
+        # 拉黑期内的代理直接跳过, 不再重复验活
+        if fail_blacklist.isBlacklisted(proxy.proxy):
+            continue
         proxy_queue.put(proxy)
 
     Checker("raw", proxy_queue)
